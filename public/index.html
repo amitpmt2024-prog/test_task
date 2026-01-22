@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Plaid Link Test</title>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        #logs { background: #f4f4f4; padding: 10px; height: 200px; overflow-y: scroll; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Plaid Link Test (US)</h1>
+        
+        <h3>1. Setup</h3>
+        <label>Ngrok / Webhook URL (Optional):</label>
+        <input type="text" id="webhookUrl" placeholder="https://your-ngrok-url.ngrok.io/webhook">
+        
+        <label>User ID:</label>
+        <input type="text" id="userId" value="user_123">
+
+        <button id="startBtn">Start Link</button>
+
+        <h3>Logs</h3>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        const log = (msg) => {
+            const el = document.getElementById('logs');
+            el.innerHTML += `<div>${new Date().toLocaleTimeString()} - ${msg}</div>`;
+            el.scrollTop = el.scrollHeight;
+        };
+
+        document.getElementById('startBtn').onclick = async () => {
+            const webhookUrl = document.getElementById('webhookUrl').value;
+            const userId = document.getElementById('userId').value;
+
+            try {
+                // 1. Create Link Token
+                log('Creating Link Token...');
+                const res = await fetch('/create_link_token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ webhook_url: webhookUrl, user_id: userId })
+                });
+                const data = await res.json();
+                
+                if (!res.ok) throw new Error(data.error);
+                log(`Link Token created: ${data.link_token}`);
+
+                // 2. Initialize Link
+                const handler = Plaid.create({
+                    token: data.link_token,
+                    onSuccess: async (public_token, metadata) => {
+                        log(`Success! Public Token: ${public_token}`);
+                        log('Exchanging for Access Token...');
+
+                        // 3. Exchange Token
+                        const exchangeRes = await fetch('/connections', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                public_token: public_token,
+                                region: 'US', // Hardcoded for this test
+                                user_id: userId
+                            })
+                        });
+                        const exchangeData = await exchangeRes.json();
+                        log(`Connection created! Item ID: ${exchangeData.item_id}`);
+                    },
+                    onLoad: () => { log('Link loaded'); },
+                    onExit: (err, metadata) => {
+                        if (err) log(`Exit Error: ${err.message}`);
+                        else log('Link exited by user');
+                    },
+                    onEvent: (eventName, metadata) => {
+                         // log(`Event: ${eventName}`);
+                    }
+                });
+
+                handler.open();
+
+            } catch (err) {
+                log(`Error: ${err.message}`);
+                console.error(err);
+            }
+        };
+    </script>
+</body>
+</html>
