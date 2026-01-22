@@ -1,7 +1,28 @@
+/**
+ * Link Token Endpoint
+ * 
+ * Creates Plaid Link tokens for initializing the Plaid Link flow in the frontend.
+ * Supports region-specific configuration (US, CA, EU) with appropriate country codes.
+ */
+
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { getPlaidClient } from './plaidClient';
 import { CountryCode, Products } from 'plaid';
 
+/**
+ * Creates a Plaid Link token for initiating the Plaid Link flow.
+ * 
+ * The link token is used by the frontend to initialize Plaid Link, which allows
+ * users to connect their bank accounts. The token is region-specific and uses
+ * the appropriate Plaid credentials for the specified region.
+ * 
+ * @param event - API Gateway event containing:
+ *   - user_id: User identifier
+ *   - region: Region code (US, CA, or EU) - defaults to 'US'
+ *   - webhook_url: Optional webhook URL for Plaid to send notifications
+ * 
+ * @returns API Gateway response with link_token and expiration
+ */
 export const createLinkToken: APIGatewayProxyHandler = async (event) => {
   try {
     const body = event.body ? JSON.parse(event.body) : {};

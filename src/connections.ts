@@ -1,3 +1,10 @@
+/**
+ * Connections Endpoint
+ * 
+ * Handles the creation of Plaid connections by exchanging public tokens
+ * for access tokens. Supports region-specific credentials (US, CA, EU).
+ */
+
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { getPlaidClient } from './plaidClient';
 import { db } from './db';
@@ -9,6 +16,18 @@ interface ConnectionRequest {
   institution_id?: string;
 }
 
+/**
+ * Creates a new Plaid connection by exchanging a public token for an access token.
+ * 
+ * This endpoint:
+ * - Validates the region (US, CA, or EU)
+ * - Exchanges the public_token for a permanent access_token using region-specific credentials
+ * - Fetches institution details if not provided
+ * - Saves the connection (item) to the database with the region information
+ * 
+ * @param event - API Gateway event containing the request body
+ * @returns API Gateway response with item_id, status, and region
+ */
 export const createConnection: APIGatewayProxyHandler = async (event) => {
   try {
     if (!event.body) {

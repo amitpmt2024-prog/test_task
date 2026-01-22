@@ -1,8 +1,27 @@
+/**
+ * Transaction Worker
+ * 
+ * Background worker that processes queued jobs for:
+ * - Transaction synchronization from Plaid
+ * - Processing newly available accounts
+ * 
+ * Uses region-specific Plaid clients based on the item's stored region.
+ */
+
 import { SQSHandler } from 'aws-lambda';
 import { getPlaidClient } from './plaidClient';
 import { db } from './db';
 import { TransactionsSyncPayload, QueueMessage } from './types';
 
+/**
+ * Lambda worker handler that processes messages from the background queue.
+ * 
+ * This worker handles two types of messages:
+ * - SYNC_TRANSACTIONS: Syncs transactions from Plaid for a specific item
+ * - ADD_NEW_ACCOUNTS: Fetches and processes newly available accounts
+ * 
+ * @param event - SQS event containing one or more messages to process
+ */
 export const transactionWorker: SQSHandler = async (event) => {
   for (const record of event.Records) {
     const message: QueueMessage = JSON.parse(record.body);
@@ -16,6 +35,20 @@ export const transactionWorker: SQSHandler = async (event) => {
   }
 };
 
+/**
+ * Syncs transactions from Plaid for a specific item using cursor-based pagination.
+ * 
+ * This function:
+ * - Retrieves the item and its region from the database
+ * - Uses the region-specific Plaid client
+ * - Fetches transactions in batches using the sync cursor
+ * - Upserts new/modified transactions and soft-deletes removed ones
+ * - Updates the sync cursor for the next sync
+ * 
+ * The sync continues until Plaid indicates no more data is available (has_more = false).
+ * 
+ * @param payload - Contains item_id to sync transactions for
+ */
 async function handleTransactionSync(payload: TransactionsSyncPayload): Promise<void> {
   const { item_id } = payload;
   const item = await db.getItem(item_id);
@@ -66,6 +99,20 @@ async function handleTransactionSync(payload: TransactionsSyncPayload): Promise<
   console.log(`[Worker] Sync complete for ${item_id}`);
 }
 
+/**
+ * Processes newly available accounts for an item.
+ * 
+ * When a user's bank adds new accounts (e.g., they opened a new account),
+ * Plaid sends a NEW_ACCOUNTS_AVAILABLE webhook. This function:
+ * - Fetches all accounts from Plaid using the region-specific client
+ * - Filters to only new accounts if account_ids are provided
+ * - Logs account details for notification purposes
+ * 
+ * In production, this would typically save accounts to a database and
+ * send notifications to the user.
+ * 
+ * @param payload - Contains item_id and optional list of new account_ids
+ */
 async function handleAddNewAccounts(payload: { item_id: string; account_ids?: string[] }): Promise<void> {
   const { item_id, account_ids } = payload;
   const item = await db.getItem(item_id);

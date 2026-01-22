@@ -1,3 +1,14 @@
+/**
+ * Webhook Handler
+ * 
+ * Receives and processes webhooks from Plaid. Implements quick acknowledgment
+ * (< 2 seconds) and delegates heavy processing to background workers.
+ * 
+ * Handles:
+ * - TRANSACTIONS webhooks (updates, removals)
+ * - ITEM webhooks (login required, new accounts, errors)
+ */
+
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { db } from './db';
 import { backgroundQueue } from './mockQueue';
@@ -78,6 +89,15 @@ export const handleWebhook: APIGatewayProxyHandler = async (event) => {
   }
 };
 
+/**
+ * Processes webhook payload asynchronously in the background.
+ * 
+ * This function handles the actual webhook processing after the webhook
+ * has been acknowledged. It routes to appropriate handlers based on
+ * webhook type and code.
+ * 
+ * @param event - API Gateway event containing the webhook payload
+ */
 async function processWebhookAsync(event: any): Promise<void> {
   if (!event.body) return;
 
@@ -102,6 +122,17 @@ async function processWebhookAsync(event: any): Promise<void> {
   }
 }
 
+/**
+ * Handles TRANSACTIONS webhook events.
+ * 
+ * Processes:
+ * - SYNC_UPDATES_AVAILABLE/DEFAULT_UPDATE/INITIAL_UPDATE: Queues transaction sync job
+ * - TRANSACTIONS_REMOVED: Soft-deletes removed transactions from database
+ * 
+ * @param webhookCode - The specific webhook code (e.g., 'SYNC_UPDATES_AVAILABLE')
+ * @param itemId - The Plaid item ID associated with the webhook
+ * @param payload - Full webhook payload containing transaction data
+ */
 async function handleTransactionsWebhook(webhookCode: string, itemId: string, payload: PlaidWebhookBody): Promise<void> {
   if (['SYNC_UPDATES_AVAILABLE', 'DEFAULT_UPDATE', 'INITIAL_UPDATE'].includes(webhookCode)) {
     await backgroundQueue.sendMessage({ type: 'SYNC_TRANSACTIONS', payload: { item_id: itemId } });
@@ -120,6 +151,20 @@ async function handleTransactionsWebhook(webhookCode: string, itemId: string, pa
   console.log(`[Webhook] Unhandled TRANSACTIONS code: ${webhookCode}`);
 }
 
+/**
+ * Handles ITEM webhook events.
+ * 
+ * Processes:
+ * - LOGIN_REQUIRED: Marks item as requiring re-authentication
+ * - NEW_ACCOUNTS_AVAILABLE: Queues job to fetch and process new accounts
+ * - ERROR: Marks item as login_required when errors occur
+ * - PENDING_EXPIRATION: Logs warning about expiring access token
+ * 
+ * @param webhookCode - The specific webhook code (e.g., 'LOGIN_REQUIRED')
+ * @param itemId - The Plaid item ID
+ * @param payload - Full webhook payload
+ * @param item - The item record from database
+ */
 async function handleItemWebhook(webhookCode: string, itemId: string, payload: PlaidWebhookBody, item: any): Promise<void> {
   if (webhookCode === 'LOGIN_REQUIRED') {
     await db.updateItemStatus(itemId, 'login_required');

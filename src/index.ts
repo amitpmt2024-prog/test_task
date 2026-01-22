@@ -1,3 +1,15 @@
+/**
+ * Express Server Entry Point
+ * 
+ * Sets up Express server for local development, wrapping Lambda handlers
+ * to work with Express.js. Automatically initializes database tables on startup.
+ * 
+ * Endpoints:
+ * - POST /create_link_token - Create Plaid Link token
+ * - POST /connections - Exchange public token for access token
+ * - POST /webhook - Receive Plaid webhooks
+ */
+
 import express from 'express'
 import bodyParser from 'body-parser';
 import { createConnection } from './connections';
@@ -13,6 +25,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 const app = express();
 const PORT = 3000;
 
+// Initialize database tables on server startup
 (async () => {
   try {
     await db.initializeTables();
@@ -25,6 +38,15 @@ const PORT = 3000;
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
+/**
+ * Wraps a Lambda handler function to work with Express.js for local development.
+ * 
+ * Converts Express request/response to API Gateway event format, executes
+ * the Lambda handler, and converts the response back to Express format.
+ * 
+ * @param handler - Lambda handler function (APIGatewayProxyHandler)
+ * @returns Express route handler function
+ */
 const wrapLambda = (handler: any) => async (req: express.Request, res: express.Response) => {
   const event: Partial<APIGatewayProxyEvent> = {
     body: JSON.stringify(req.body),
