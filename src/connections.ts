@@ -16,7 +16,6 @@ export const createConnection: APIGatewayProxyHandler = async (event) => {
     if (!event.body) {
         return { statusCode: 400, body: JSON.stringify({ error: 'Missing request body' }) };
     }
-
     const { public_token, region = 'US', user_id, institution_id, institution_name }: ConnectionRequest = JSON.parse(event.body);
 
     if (!public_token || !user_id) {
@@ -59,7 +58,7 @@ export const createConnection: APIGatewayProxyHandler = async (event) => {
         console.warn('[API] Could not fetch item details:', error);
       }
     }
-
+     
     // 4. Save Item to DB with region
     await db.saveItem({
       item_id: itemId,
@@ -86,8 +85,21 @@ export const createConnection: APIGatewayProxyHandler = async (event) => {
       })
     };
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Connection error:', error);
-    return { statusCode: 500, body: JSON.stringify({ error: 'Internal Server Error' }) };
+    const errorMessage = error?.message || 'Unknown error';
+    const errorDetails = error?.response?.data || error?.error || error;
+    
+    return { 
+      statusCode: 500, 
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ 
+        error: 'Internal Server Error',
+        message: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? errorDetails : undefined
+      }) 
+    };
   }
 };

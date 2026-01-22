@@ -3,6 +3,7 @@ import bodyParser from 'body-parser';
 import { createConnection } from './connections';
 import { handleWebhook } from './webhook';
 import { createLinkToken } from './linkToken';
+import { db } from './db';
 import { APIGatewayProxyEvent, Context, APIGatewayProxyResult } from 'aws-lambda';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -12,6 +13,16 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 const PORT = 3000;
+
+// Initialize database tables on startup
+(async () => {
+  try {
+    await db.initializeTables();
+  } catch (error) {
+    console.error('Failed to initialize database tables:', error);
+    console.error('Please ensure your database is running and credentials are correct.');
+  }
+})();
 
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../public')));
