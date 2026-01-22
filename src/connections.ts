@@ -4,102 +4,69 @@ import { db } from './db';
 
 interface ConnectionRequest {
   public_token: string;
-  region?: string; // US, CA, or EU - optional, defaults to 'US'
+  region?: string;
   user_id: string;
   institution_id?: string;
-  institution_name?: string;
 }
 
-// Lambda Handler
+const VALID_REGIONS = ['US', 'CA', 'EU'];
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
 export const createConnection: APIGatewayProxyHandler = async (event) => {
   try {
     if (!event.body) {
-        return { statusCode: 400, body: JSON.stringify({ error: 'Missing request body' }) };
+      return { statusCode: 400, headers: JSON_HEADERS, body: JSON.stringify({ error: 'Missing request body' }) };
     }
-    const { public_token, region = 'US', user_id, institution_id, institution_name }: ConnectionRequest = JSON.parse(event.body);
+
+    const { public_token, region = 'US', user_id, institution_id }: ConnectionRequest = JSON.parse(event.body);
 
     if (!public_token || !user_id) {
-       return { 
-         statusCode: 400, 
-         body: JSON.stringify({ error: 'Missing required fields: public_token and user_id are required' }) 
-       };
+      return { statusCode: 400, headers: JSON_HEADERS, body: JSON.stringify({ error: 'Missing required fields' }) };
     }
 
-    // Validate region - Only allow US, CA, and EU
-    const validRegions = ['US', 'CA', 'EU'];
     const normalizedRegion = region.toUpperCase();
-    if (region && !validRegions.includes(normalizedRegion)) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: `Invalid region: ${region}. Valid regions: US, CA, EU` })
-      };
+    if (!VALID_REGIONS.includes(normalizedRegion)) {
+      return { statusCode: 400, headers: JSON_HEADERS, body: JSON.stringify({ error: `Invalid region. Valid: ${VALID_REGIONS.join(', ')}` }) };
     }
 
-    console.log(`[API] Creating connection for user ${user_id} in region ${normalizedRegion}`);
+    const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
+    const { access_token, item_id } = exchangeResponse.data;
 
-    // 1. Exchange public token for access token
-    const exchangeResponse = await plaidClient.itemPublicTokenExchange({
-      public_token: public_token,
-    });
-    
-    const accessToken = exchangeResponse.data.access_token;
-    const itemId = exchangeResponse.data.item_id;
-
-    // 2. Get item info to retrieve institution details if not provided
     let finalInstitutionId = institution_id;
-    let finalInstitutionName = institution_name;
     if (!finalInstitutionId) {
       try {
-        const itemResponse = await plaidClient.itemGet({
-          access_token: accessToken
-        });
+        const itemResponse = await plaidClient.itemGet({ access_token });
         finalInstitutionId = itemResponse.data.item.institution_id || undefined;
       } catch (error) {
-        console.warn('[API] Could not fetch item details:', error);
+        console.warn('[API] Could not fetch institution:', error);
       }
     }
-     
-    // 4. Save Item to DB with region
+
     await db.saveItem({
-      item_id: itemId,
-      user_id: user_id,
-      access_token: accessToken,
-      institution_id: finalInstitutionId || undefined,
+      item_id,
+      user_id,
+      access_token,
+      institution_id: finalInstitutionId,
       region: normalizedRegion,
       status: 'active',
       created_at: new Date()
     });
 
-    console.log(`[API] Connection created successfully: item_id=${itemId}, region=${normalizedRegion}`);
-
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ 
-        item_id: itemId, 
-        status: 'connected',
-        region: normalizedRegion,
-        message: 'Connection created successfully'
-      })
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ item_id, status: 'connected', region: normalizedRegion })
     };
-
   } catch (error: any) {
-    console.error('Connection error:', error);
-    const errorMessage = error?.message || 'Unknown error';
-    const errorDetails = error?.response?.data || error?.error || error;
-    
-    return { 
-      statusCode: 500, 
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ 
+    console.error('[API] Connection error:', error);
+    return {
+      statusCode: 500,
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
         error: 'Internal Server Error',
-        message: errorMessage,
-        details: process.env.NODE_ENV === 'development' ? errorDetails : undefined
-      }) 
+        message: error?.message || 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && { details: error?.response?.data || error })
+      })
     };
   }
 };

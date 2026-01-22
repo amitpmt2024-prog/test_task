@@ -27,27 +27,22 @@ const PORT = 3000;
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Helper to wrap Lambda handler
 const wrapLambda = (handler: any) => async (req: express.Request, res: express.Response) => {
-    // Mock API Gateway Event
-    const event: Partial<APIGatewayProxyEvent> = {
-        body: JSON.stringify(req.body),
-        headers: req.headers as any,
-        httpMethod: req.method,
-        path: req.path,
-        queryStringParameters: req.query as any,
-    };
+  const event: Partial<APIGatewayProxyEvent> = {
+    body: JSON.stringify(req.body),
+    headers: req.headers as any,
+    httpMethod: req.method,
+    path: req.path,
+    queryStringParameters: req.query as any,
+  };
 
-    const context: Partial<Context> = {};
-
-    try {
-        const result = await handler(event, context, () => {}) as APIGatewayProxyResult;
-        
-        res.status(result.statusCode).set(result.headers).send(result.body ? JSON.parse(result.body) : {});
-    } catch (error) {
-        console.error('Lambda Wrapper Error:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
+  try {
+    const result = await handler(event, {} as Context, () => {}) as APIGatewayProxyResult;
+    res.status(result.statusCode).set(result.headers || {}).send(result.body ? JSON.parse(result.body) : {});
+  } catch (error) {
+    console.error('[Server] Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 };
 
 // Routes

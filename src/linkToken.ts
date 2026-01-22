@@ -2,64 +2,44 @@ import { APIGatewayProxyHandler } from 'aws-lambda';
 import { plaidClient } from './plaidClient';
 import { CountryCode, Products } from 'plaid';
 
+const VALID_REGIONS = ['US', 'CA', 'EU'];
+const REGION_TO_COUNTRY: Record<string, CountryCode> = {
+  'US': CountryCode.Us,
+  'CA': CountryCode.Ca,
+  'EU': CountryCode.Gb,
+};
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
 export const createLinkToken: APIGatewayProxyHandler = async (event) => {
   try {
     const body = event.body ? JSON.parse(event.body) : {};
-    const webhookUrl = body.webhook_url; 
-    const userId = body.user_id || 'test-user-id';
-    const region = body.region || 'US'; // Support region parameter
+    const { webhook_url, user_id = 'test-user-id', region = 'US' } = body;
 
-    // Validate region FIRST - Only allow US, CA, and EU
-    const validRegions = ['US', 'CA', 'EU'];
     const normalizedRegion = region.toUpperCase();
-    if (!validRegions.includes(normalizedRegion)) {
+    if (!VALID_REGIONS.includes(normalizedRegion)) {
       return {
         statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          error: `Invalid region: ${region}. Valid regions: US, CA, EU`
-        }),
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ error: `Invalid region. Valid: ${VALID_REGIONS.join(', ')}` })
       };
     }
 
-    // Map region to country code - Only US, CA, and EU allowed
-    // EU maps to GB (United Kingdom) as the default EU country for Plaid
-    const regionToCountryCode: Record<string, CountryCode> = {
-      'US': CountryCode.Us,
-      'CA': CountryCode.Ca,
-      'EU': CountryCode.Gb, // EU maps to UK/GB for Plaid
-    };
-
-    const countryCode = regionToCountryCode[normalizedRegion];
-
-    const request = {
-      user: {
-        client_user_id: userId,
-      },
+    const response = await plaidClient.linkTokenCreate({
+      user: { client_user_id: user_id },
       client_name: 'Plaid Test App',
       products: [Products.Transactions],
-      country_codes: [countryCode],
+      country_codes: [REGION_TO_COUNTRY[normalizedRegion]],
       language: 'en',
-      webhook: webhookUrl || undefined, // Set webhook URL if provided
-    };
+      webhook: webhook_url || undefined,
+    });
 
-    const createTokenResponse = await plaidClient.linkTokenCreate(request);
-    
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(createTokenResponse.data),
-    };
+    return { statusCode: 200, headers: JSON_HEADERS, body: JSON.stringify(response.data) };
   } catch (error: any) {
-    console.error('Error creating link token:', error);
+    console.error('[API] Link token error:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ 
-        error: 'Failed to create link token',
-        message: error.message || 'Unknown error'
-      }),
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ error: 'Failed to create link token', message: error.message || 'Unknown error' })
     };
   }
 };
