@@ -22,7 +22,15 @@ class DB {
       ON CONFLICT (item_id) DO UPDATE 
       SET access_token = EXCLUDED.access_token, region = EXCLUDED.region, status = EXCLUDED.status, updated_at = NOW();
     `;
-    const values = [item.item_id, item.user_id, item.access_token, item.institution_id || null, item.region || null, item.status, item.created_at];
+    const values = [
+      item.item_id, 
+      item.user_id, 
+      item.access_token, 
+      item.institution_id ?? null, 
+      item.region ?? null, 
+      item.status, 
+      item.created_at
+    ];
     
     try {
       await pool.query(query, values);

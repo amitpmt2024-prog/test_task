@@ -46,10 +46,10 @@ async function runSimulation() {
 
   // 4. Verify DB State
   console.log('\n--- Step 4: Verification ---');
-  const state = db.dumpState();
+  const state = await db.dumpState();
   console.log('Database State:', state);
 
-  if (state.itemsCount === 1 && state.transactionsCount >= 2 && state.cursors.length === 1) {
+  if (state.itemsCount === 1 && state.transactionsCount >= 2 && state.cursors === 1) {
       console.log('✅ SUCCESS: Item created, webhook handled, transactions synced.');
       // Check if deletion worked (state.transactionsCount would vary depending on if we pre-seeded the deleted one, 
       // but assuming we started empty, we added 2 and removed 1 non-existent one, so count is 2.

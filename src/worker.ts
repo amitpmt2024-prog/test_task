@@ -34,14 +34,14 @@ async function handleTransactionSync(payload: TransactionsSyncPayload): Promise<
   }
 
   // 2. Get Cursor
-  let cursor = await db.getCursor(item_id);
+  let cursor: string | undefined = await db.getCursor(item_id);
 
   // 3. Call Plaid Sync
   let hasMore = true;
   while (hasMore) {
     const response = await plaidClient.transactionsSync({
       access_token: item.access_token,
-      cursor: cursor
+      cursor: cursor || undefined
     });
 
     const data = response.data;

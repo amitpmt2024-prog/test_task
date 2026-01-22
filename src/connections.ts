@@ -49,16 +49,23 @@ export const createConnection: APIGatewayProxyHandler = async (event) => {
     // 2. Get item info to retrieve institution details if not provided
     let finalInstitutionId = institution_id;
     let finalInstitutionName = institution_name;
-    
-    // In real implementation, you would call plaidClient.itemGet() here
-    // to get institution_id if not provided
+    if (!finalInstitutionId) {
+      try {
+        const itemResponse = await plaidClient.itemGet({
+          access_token: accessToken
+        });
+        finalInstitutionId = itemResponse.data.item.institution_id || undefined;
+      } catch (error) {
+        console.warn('[API] Could not fetch item details:', error);
+      }
+    }
 
-    // 3. Save Item to DB with region
+    // 4. Save Item to DB with region
     await db.saveItem({
       item_id: itemId,
       user_id: user_id,
       access_token: accessToken,
-      institution_id: finalInstitutionId || null,
+      institution_id: finalInstitutionId || undefined,
       region: normalizedRegion,
       status: 'active',
       created_at: new Date()

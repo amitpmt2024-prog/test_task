@@ -21,6 +21,13 @@
         
         <label>User ID:</label>
         <input type="text" id="userId" value="user_123">
+        
+        <label>Region:</label>
+        <select id="region">
+            <option value="US">US</option>
+            <option value="UK">UK</option>
+            <option value="CA">CA</option>
+        </select>
 
         <button id="startBtn">Start Link</button>
 
@@ -38,14 +45,19 @@
         document.getElementById('startBtn').onclick = async () => {
             const webhookUrl = document.getElementById('webhookUrl').value;
             const userId = document.getElementById('userId').value;
+            const region = document.getElementById('region').value;
 
             try {
                 // 1. Create Link Token
-                log('Creating Link Token...');
+                log(`Creating Link Token for region: ${region}...`);
                 const res = await fetch('/create_link_token', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ webhook_url: webhookUrl, user_id: userId })
+                    body: JSON.stringify({ 
+                        webhook_url: webhookUrl, 
+                        user_id: userId,
+                        region: region
+                    })
                 });
                 const data = await res.json();
                 
@@ -65,8 +77,10 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 public_token: public_token,
-                                region: 'US', // Hardcoded for this test
-                                user_id: userId
+                                region: document.getElementById('region')?.value || 'US',
+                                user_id: userId,
+                                institution_id: metadata.institution?.institution_id,
+                                institution_name: metadata.institution?.name
                             })
                         });
                         const exchangeData = await exchangeRes.json();
