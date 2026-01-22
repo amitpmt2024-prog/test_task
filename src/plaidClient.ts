@@ -1,15 +1,12 @@
-// Real Plaid client configuration
 import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-// Get Plaid credentials from environment variables
 const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
 const PLAID_SECRET = process.env.PLAID_SECRET;
-const PLAID_ENV = process.env.PLAID_ENV || 'sandbox'; 
+const PLAID_ENV = process.env.PLAID_ENV || 'sandbox';
 
-// Create mock client interface
 const createMockClient = () => ({
   itemPublicTokenExchange: async (request: { public_token: string }) => {
     console.log(`[Plaid Mock] Exchanging public token: ${request.public_token}`);
@@ -63,18 +60,14 @@ const createMockClient = () => ({
   }
 });
 
-// Validate credentials and create appropriate client
 let plaidClient: PlaidApi | ReturnType<typeof createMockClient>;
 
 if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
-  console.warn('⚠️  Plaid credentials not found in environment variables.');
-  console.warn('⚠️  Using mock client. Set PLAID_CLIENT_ID and PLAID_SECRET to use real Plaid API.');
+  console.warn('Plaid credentials not found. Using mock client.');
   plaidClient = createMockClient();
 } else {
-  // Use real Plaid client
-  console.log(`✅ Using real Plaid client (${PLAID_ENV} environment)`);
-  
-  const configuration = new Configuration({
+  console.log(`Using real Plaid client (${PLAID_ENV})`);
+  const config = new Configuration({
     basePath: PlaidEnvironments[PLAID_ENV as keyof typeof PlaidEnvironments],
     baseOptions: {
       headers: {
@@ -83,8 +76,7 @@ if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
       },
     },
   });
-
-  plaidClient = new PlaidApi(configuration);
+  plaidClient = new PlaidApi(config);
 }
 
 export { plaidClient };

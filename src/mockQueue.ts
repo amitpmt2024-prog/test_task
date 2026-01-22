@@ -1,8 +1,7 @@
 import { SQSEvent, SQSRecord } from 'aws-lambda';
 import { QueueMessage } from './types';
-import { transactionWorker } from './worker'; // Direct import to simulate invocation
+import { transactionWorker } from './worker';
 
-// Mock SQS Event construction
 const createMockSQSEvent = (body: any): SQSEvent => {
   return {
     Records: [
@@ -25,17 +24,14 @@ export const backgroundQueue = {
   sendMessage: async (message: QueueMessage) => {
     console.log(`[Queue] Message enqueued: ${message.type} for item ${message.payload.item_id}`);
     
-    // Simulate async background processing
     setTimeout(async () => {
-        console.log(`[Worker] Picking up job for ${message.payload.item_id}`);
-        try {
-            // Invoke worker with SQS Event structure
-            const event = createMockSQSEvent(message.payload);
-            // SQSHandler returns void or Promise<void>
-            await transactionWorker(event, {} as any, () => {}); 
-        } catch (e) {
-            console.error(e);
-        }
-    }, 100); 
+      console.log(`[Worker] Picking up job for ${message.payload.item_id}`);
+      try {
+        const event = createMockSQSEvent(message.payload);
+        await transactionWorker(event, {} as any, () => {});
+      } catch (e) {
+        console.error(e);
+      }
+    }, 100);
   }
 };

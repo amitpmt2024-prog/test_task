@@ -50,14 +50,10 @@ async function runSimulation() {
   console.log('Database State:', state);
 
   if (state.itemsCount === 1 && state.transactionsCount >= 2 && state.cursors === 1) {
-      console.log('✅ SUCCESS: Item created, webhook handled, transactions synced.');
-      // Check if deletion worked (state.transactionsCount would vary depending on if we pre-seeded the deleted one, 
-      // but assuming we started empty, we added 2 and removed 1 non-existent one, so count is 2.
-      // If we want to verify deletion, we should probably add a transaction first that gets deleted.
-      // For this simple mock, we just check no errors occurred.
-      console.log('✅ Verified deletion logic didn\'t crash worker.');
+      console.log('SUCCESS: Item created, webhook handled, transactions synced.');
+      
   } else {
-      console.error('❌ FAILURE: State mismatch.');
+      console.error('FAILURE: State mismatch.');
   }
 }
 

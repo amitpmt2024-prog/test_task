@@ -9,36 +9,45 @@ interface ConnectionRequest {
   institution_id?: string;
 }
 
-const VALID_REGIONS = ['US', 'CA', 'EU'];
-const JSON_HEADERS = { 'Content-Type': 'application/json' };
-
 export const createConnection: APIGatewayProxyHandler = async (event) => {
   try {
     if (!event.body) {
-      return { statusCode: 400, headers: JSON_HEADERS, body: JSON.stringify({ error: 'Missing request body' }) };
+      return { 
+        statusCode: 400, 
+        body: JSON.stringify({ error: 'Missing request body' }) 
+      };
     }
 
-    const { public_token, region = 'US', user_id, institution_id }: ConnectionRequest = JSON.parse(event.body);
+    const body = JSON.parse(event.body) as ConnectionRequest;
+    const { public_token, region = 'US', user_id, institution_id } = body;
 
     if (!public_token || !user_id) {
-      return { statusCode: 400, headers: JSON_HEADERS, body: JSON.stringify({ error: 'Missing required fields' }) };
+      return { 
+        statusCode: 400, 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Missing required fields' }) 
+      };
     }
 
-    const normalizedRegion = region.toUpperCase();
-    if (!VALID_REGIONS.includes(normalizedRegion)) {
-      return { statusCode: 400, headers: JSON_HEADERS, body: JSON.stringify({ error: `Invalid region. Valid: ${VALID_REGIONS.join(', ')}` }) };
+    const regionUpper = region.toUpperCase();
+    if (!['US', 'CA', 'EU'].includes(regionUpper)) {
+      return { 
+        statusCode: 400, 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Invalid region. Valid: US, CA, EU' }) 
+      };
     }
 
     const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
     const { access_token, item_id } = exchangeResponse.data;
 
-    let finalInstitutionId = institution_id;
-    if (!finalInstitutionId) {
+    let instId = institution_id;
+    if (!instId) {
       try {
         const itemResponse = await plaidClient.itemGet({ access_token });
-        finalInstitutionId = itemResponse.data.item.institution_id || undefined;
-      } catch (error) {
-        console.warn('[API] Could not fetch institution:', error);
+        instId = itemResponse.data.item.institution_id || undefined;
+      } catch (err) {
+        console.warn('[API] Could not fetch institution:', err);
       }
     }
 
@@ -46,27 +55,31 @@ export const createConnection: APIGatewayProxyHandler = async (event) => {
       item_id,
       user_id,
       access_token,
-      institution_id: finalInstitutionId,
-      region: normalizedRegion,
+      institution_id: instId,
+      region: regionUpper,
       status: 'active',
       created_at: new Date()
     });
 
     return {
       statusCode: 200,
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ item_id, status: 'connected', region: normalizedRegion })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id, status: 'connected', region: regionUpper })
     };
-  } catch (error: any) {
-    console.error('[API] Connection error:', error);
+  } catch (err: any) {
+    console.error('Connection error:', err);
+    const errorMsg = err?.message || 'Unknown error';
+    const response: any = {
+      error: 'Internal Server Error',
+      message: errorMsg
+    };
+    if (process.env.NODE_ENV === 'development') {
+      response.details = err?.response?.data || err;
+    }
     return {
       statusCode: 500,
-      headers: JSON_HEADERS,
-      body: JSON.stringify({
-        error: 'Internal Server Error',
-        message: error?.message || 'Unknown error',
-        ...(process.env.NODE_ENV === 'development' && { details: error?.response?.data || error })
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(response)
     };
   }
 };

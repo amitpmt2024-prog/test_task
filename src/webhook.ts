@@ -3,31 +3,14 @@ import { db } from './db';
 import { backgroundQueue } from './mockQueue';
 import { PlaidWebhookBody } from './types';
 
-const JSON_HEADERS = { 'Content-Type': 'application/json' };
-
-const getAction = (webhookType: string, webhookCode: string, payload: PlaidWebhookBody): string => {
-  if (webhookType === 'TRANSACTIONS') {
-    if (['SYNC_UPDATES_AVAILABLE', 'DEFAULT_UPDATE', 'INITIAL_UPDATE'].includes(webhookCode)) {
-      return 'trigger_transaction_sync';
-    }
-    if (webhookCode === 'TRANSACTIONS_REMOVED') {
-      return `soft_delete_${payload.removed_transactions?.length || 0}_transactions`;
-    }
-  }
-  if (webhookType === 'ITEM') {
-    if (webhookCode === 'LOGIN_REQUIRED') return 'update_item_status_to_login_required';
-    if (webhookCode === 'NEW_ACCOUNTS_AVAILABLE') {
-      return `process_${payload.new_accounts?.length || 0}_new_accounts`;
-    }
-    if (webhookCode === 'ERROR') return 'handle_item_error';
-  }
-  return 'unknown';
-};
-
 export const handleWebhook: APIGatewayProxyHandler = async (event) => {
   try {
     if (!event.body) {
-      return { statusCode: 400, headers: JSON_HEADERS, body: JSON.stringify({ error: 'Missing request body' }) };
+      return { 
+        statusCode: 400, 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ error: 'Missing request body' }) 
+      };
     }
 
     const payload = JSON.parse(event.body) as PlaidWebhookBody;
@@ -37,27 +20,60 @@ export const handleWebhook: APIGatewayProxyHandler = async (event) => {
     if (!item) {
       return {
         statusCode: 200,
-        headers: JSON_HEADERS,
-        body: JSON.stringify({ received: true, processed: false, error: `Item ${item_id} not found`, webhook_type, webhook_code })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          received: true, 
+          processed: false, 
+          error: `Item ${item_id} not found`,
+          webhook_type,
+          webhook_code
+        })
       };
     }
 
-    const action = getAction(webhook_type, webhook_code, payload);
+    let action = 'unknown';
+    if (webhook_type === 'TRANSACTIONS') {
+      if (['SYNC_UPDATES_AVAILABLE', 'DEFAULT_UPDATE', 'INITIAL_UPDATE'].includes(webhook_code)) {
+        action = 'trigger_transaction_sync';
+      } else if (webhook_code === 'TRANSACTIONS_REMOVED') {
+        action = `soft_delete_${payload.removed_transactions?.length || 0}_transactions`;
+      }
+    } else if (webhook_type === 'ITEM') {
+      if (webhook_code === 'LOGIN_REQUIRED') {
+        action = 'update_item_status_to_login_required';
+      } else if (webhook_code === 'NEW_ACCOUNTS_AVAILABLE') {
+        action = `process_${payload.new_accounts?.length || 0}_new_accounts`;
+      } else if (webhook_code === 'ERROR') {
+        action = 'handle_item_error';
+      }
+    }
+
     console.log(`[Webhook] ${webhook_type}.${webhook_code} for item ${item_id} -> ${action}`);
 
     processWebhookAsync(event).catch(err => console.error('[Webhook] Processing error:', err));
 
     return {
       statusCode: 200,
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ received: true, processed: true, webhook_type, webhook_code, item_id, action })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        received: true, 
+        processed: true, 
+        webhook_type, 
+        webhook_code, 
+        item_id, 
+        action 
+      })
     };
   } catch (error: any) {
     console.error('[Webhook] Error:', error);
     return {
       statusCode: 200,
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ received: true, processed: false, error: error.message || 'Unknown error' })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        received: true, 
+        processed: false, 
+        error: error.message || 'Unknown error' 
+      })
     };
   }
 };
@@ -105,32 +121,23 @@ async function handleTransactionsWebhook(webhookCode: string, itemId: string, pa
 }
 
 async function handleItemWebhook(webhookCode: string, itemId: string, payload: PlaidWebhookBody, item: any): Promise<void> {
-  switch (webhookCode) {
-    case 'LOGIN_REQUIRED':
-      await db.updateItemStatus(itemId, 'login_required');
-      console.log(`[Webhook] Item ${itemId} marked as login_required`);
-      break;
-
-    case 'NEW_ACCOUNTS_AVAILABLE':
-      const newAccountIds = payload.new_accounts || [];
-      if (newAccountIds.length > 0) {
-        await backgroundQueue.sendMessage({
-          type: 'ADD_NEW_ACCOUNTS',
-          payload: { item_id: itemId, account_ids: newAccountIds }
-        });
-      }
-      break;
-
-    case 'ERROR':
-      await db.updateItemStatus(itemId, 'login_required');
-      console.error(`[Webhook] Item ${itemId} error:`, payload.error);
-      break;
-
-    case 'PENDING_EXPIRATION':
-      console.log(`[Webhook] Item ${itemId} token expiring soon`);
-      break;
-
-    default:
-      console.log(`[Webhook] Unhandled ITEM code: ${webhookCode}`);
+  if (webhookCode === 'LOGIN_REQUIRED') {
+    await db.updateItemStatus(itemId, 'login_required');
+    console.log(`[Webhook] Item ${itemId} marked as login_required`);
+  } else if (webhookCode === 'NEW_ACCOUNTS_AVAILABLE') {
+    const newAccountIds = payload.new_accounts || [];
+    if (newAccountIds.length > 0) {
+      await backgroundQueue.sendMessage({
+        type: 'ADD_NEW_ACCOUNTS',
+        payload: { item_id: itemId, account_ids: newAccountIds }
+      });
+    }
+  } else if (webhookCode === 'ERROR') {
+    await db.updateItemStatus(itemId, 'login_required');
+    console.error(`[Webhook] Item ${itemId} error:`, payload.error);
+  } else if (webhookCode === 'PENDING_EXPIRATION') {
+    console.log(`[Webhook] Item ${itemId} token expiring soon`);
+  } else {
+    console.log(`[Webhook] Unhandled ITEM code: ${webhookCode}`);
   }
 }

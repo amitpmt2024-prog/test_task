@@ -72,22 +72,22 @@ async function handleAddNewAccounts(payload: { item_id: string; account_ids?: st
   }
 
   try {
-    const accountsResponse = await plaidClient.accountsGet({ access_token: item.access_token });
-    let newAccounts = accountsResponse.data.accounts;
+    const resp = await plaidClient.accountsGet({ access_token: item.access_token });
+    let accounts = resp.data.accounts;
     
     if (account_ids && account_ids.length > 0) {
-      newAccounts = newAccounts.filter(acc => account_ids.includes(acc.account_id));
+      accounts = accounts.filter(acc => account_ids.includes(acc.account_id));
     }
 
-    for (const account of newAccounts) {
-      const balance = account.balances?.current || 0;
-      const currency = account.balances?.iso_currency_code || account.balances?.unofficial_currency_code || 'USD';
-      console.log(`[Worker] New account: ${account.account_id} - ${account.name} (${account.type}/${account.subtype}) - ${currency} ${balance}`);
+    for (const acc of accounts) {
+      const bal = acc.balances?.current || 0;
+      const curr = acc.balances?.iso_currency_code || acc.balances?.unofficial_currency_code || 'USD';
+      console.log(`[Worker] New account: ${acc.account_id} - ${acc.name} (${acc.type}/${acc.subtype}) - ${curr} ${bal}`);
     }
 
-    console.log(`[Worker] User ${item.user_id} has ${newAccounts.length} new account(s) available`);
-  } catch (error: any) {
-    console.error(`[Worker] Error fetching accounts:`, error?.response?.data || error?.message);
-    throw error;
+    console.log(`[Worker] User ${item.user_id} has ${accounts.length} new account(s) available`);
+  } catch (err: any) {
+    console.error(`[Worker] Error fetching accounts:`, err?.response?.data || err?.message);
+    throw err;
   }
 }

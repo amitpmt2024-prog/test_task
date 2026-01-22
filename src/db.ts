@@ -4,7 +4,6 @@ import { Item, Transaction, SyncCursor } from './types';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-// PostgreSQL Configuration
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'postgres',
@@ -121,8 +120,6 @@ class DB {
     }
   }
 
-  // Upsert transactions with soft delete support
-  // If a transaction was previously soft-deleted and is re-added, clear deleted_at
   async upsertTransactionsWithSoftDelete(txs: Transaction[]): Promise<void> {
     if (txs.length === 0) return;
 

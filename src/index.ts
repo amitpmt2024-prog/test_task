@@ -8,13 +8,11 @@ import { APIGatewayProxyEvent, Context, APIGatewayProxyResult } from 'aws-lambda
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
-// Load environment variables
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 const PORT = 3000;
 
-// Initialize database tables on startup
 (async () => {
   try {
     await db.initializeTables();
@@ -45,7 +43,6 @@ const wrapLambda = (handler: any) => async (req: express.Request, res: express.R
   }
 };
 
-// Routes
 app.post('/connections', wrapLambda(createConnection));
 app.post('/webhook', wrapLambda(handleWebhook));
 app.post('/create_link_token', wrapLambda(createLinkToken));
