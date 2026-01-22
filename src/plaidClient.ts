@@ -3,9 +3,24 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
-const PLAID_SECRET = process.env.PLAID_SECRET;
 const PLAID_ENV = process.env.PLAID_ENV || 'sandbox';
+
+type Region = 'US' | 'CA' | 'EU';
+
+interface PlaidCredentials {
+  clientId: string;
+  secret: string;
+}
+
+const getCredentials = (region: Region): PlaidCredentials | null => {
+  const clientId = process.env[`PLAID_CLIENT_ID_${region}`];
+  const secret = process.env[`PLAID_SECRET_${region}`];
+  
+  if (clientId && secret) {
+    return { clientId, secret };
+  }
+  return null;
+};
 
 const createMockClient = () => ({
   itemPublicTokenExchange: async (request: { public_token: string }) => {
@@ -60,23 +75,34 @@ const createMockClient = () => ({
   }
 });
 
-let plaidClient: PlaidApi | ReturnType<typeof createMockClient>;
-
-if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
-  console.warn('Plaid credentials not found. Using mock client.');
-  plaidClient = createMockClient();
-} else {
-  console.log(`Using real Plaid client (${PLAID_ENV})`);
+const createPlaidClient = (region: Region): PlaidApi | ReturnType<typeof createMockClient> => {
+  const creds = getCredentials(region);
+  
+  if (!creds) {
+    console.warn(`Plaid credentials not found for ${region}. Using mock client.`);
+    return createMockClient();
+  }
+  
   const config = new Configuration({
     basePath: PlaidEnvironments[PLAID_ENV as keyof typeof PlaidEnvironments],
     baseOptions: {
       headers: {
-        'PLAID-CLIENT-ID': PLAID_CLIENT_ID,
-        'PLAID-SECRET': PLAID_SECRET,
+        'PLAID-CLIENT-ID': creds.clientId,
+        'PLAID-SECRET': creds.secret,
       },
     },
   });
-  plaidClient = new PlaidApi(config);
-}
+  
+  return new PlaidApi(config);
+};
 
-export { plaidClient };
+const clientCache = new Map<Region, PlaidApi | ReturnType<typeof createMockClient>>();
+
+export const getPlaidClient = (region: Region): PlaidApi | ReturnType<typeof createMockClient> => {
+  if (!clientCache.has(region)) {
+    clientCache.set(region, createPlaidClient(region));
+  }
+  return clientCache.get(region)!;
+};
+
+export const plaidClient = getPlaidClient('US');

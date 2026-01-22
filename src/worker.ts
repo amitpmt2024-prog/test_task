@@ -1,5 +1,5 @@
 import { SQSHandler } from 'aws-lambda';
-import { plaidClient } from './plaidClient';
+import { getPlaidClient } from './plaidClient';
 import { db } from './db';
 import { TransactionsSyncPayload, QueueMessage } from './types';
 
@@ -24,11 +24,14 @@ async function handleTransactionSync(payload: TransactionsSyncPayload): Promise<
     return;
   }
 
+  const region = (item.region || 'US') as 'US' | 'CA' | 'EU';
+  const client = getPlaidClient(region);
+
   let cursor = await db.getCursor(item_id);
   let hasMore = true;
 
   while (hasMore) {
-    const response = await plaidClient.transactionsSync({
+    const response = await client.transactionsSync({
       access_token: item.access_token,
       cursor: cursor || undefined
     });
@@ -72,7 +75,9 @@ async function handleAddNewAccounts(payload: { item_id: string; account_ids?: st
   }
 
   try {
-    const resp = await plaidClient.accountsGet({ access_token: item.access_token });
+    const region = (item.region || 'US') as 'US' | 'CA' | 'EU';
+    const client = getPlaidClient(region);
+    const resp = await client.accountsGet({ access_token: item.access_token });
     let accounts = resp.data.accounts;
     
     if (account_ids && account_ids.length > 0) {

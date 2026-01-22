@@ -1,5 +1,5 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
-import { plaidClient } from './plaidClient';
+import { getPlaidClient } from './plaidClient';
 import { db } from './db';
 
 interface ConnectionRequest {
@@ -38,13 +38,14 @@ export const createConnection: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    const exchangeResponse = await plaidClient.itemPublicTokenExchange({ public_token });
+    const client = getPlaidClient(regionUpper as 'US' | 'CA' | 'EU');
+    const exchangeResponse = await client.itemPublicTokenExchange({ public_token });
     const { access_token, item_id } = exchangeResponse.data;
 
     let instId = institution_id;
     if (!instId) {
       try {
-        const itemResponse = await plaidClient.itemGet({ access_token });
+        const itemResponse = await client.itemGet({ access_token });
         instId = itemResponse.data.item.institution_id || undefined;
       } catch (err) {
         console.warn('[API] Could not fetch institution:', err);

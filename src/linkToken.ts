@@ -1,5 +1,5 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
-import { plaidClient } from './plaidClient';
+import { getPlaidClient } from './plaidClient';
 import { CountryCode, Products } from 'plaid';
 
 export const createLinkToken: APIGatewayProxyHandler = async (event) => {
@@ -22,7 +22,8 @@ export const createLinkToken: APIGatewayProxyHandler = async (event) => {
       'EU': CountryCode.Gb,
     };
 
-    const response = await plaidClient.linkTokenCreate({
+    const client = getPlaidClient(regionUpper as 'US' | 'CA' | 'EU');
+    const response = await client.linkTokenCreate({
       user: { client_user_id: user_id },
       client_name: 'Plaid Test App',
       products: [Products.Transactions],
