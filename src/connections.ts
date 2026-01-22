@@ -4,7 +4,7 @@ import { db } from './db';
 
 interface ConnectionRequest {
   public_token: string;
-  region?: string; // UK, US, CA, etc. - optional, defaults to 'US'
+  region?: string; // US, CA, or EU - optional, defaults to 'US'
   user_id: string;
   institution_id?: string;
   institution_name?: string;
@@ -26,13 +26,13 @@ export const createConnection: APIGatewayProxyHandler = async (event) => {
        };
     }
 
-    // Validate region if provided
-    const validRegions = ['US', 'UK', 'CA', 'IE', 'ES', 'FR', 'NL', 'DE', 'IT', 'PL', 'DK', 'NO', 'SE', 'EE', 'LT', 'LV', 'PT', 'BE', 'AT'];
+    // Validate region - Only allow US, CA, and EU
+    const validRegions = ['US', 'CA', 'EU'];
     const normalizedRegion = region.toUpperCase();
     if (region && !validRegions.includes(normalizedRegion)) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: `Invalid region: ${region}. Valid regions: ${validRegions.join(', ')}` })
+        body: JSON.stringify({ error: `Invalid region: ${region}. Valid regions: US, CA, EU` })
       };
     }
 

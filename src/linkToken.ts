@@ -9,30 +9,28 @@ export const createLinkToken: APIGatewayProxyHandler = async (event) => {
     const userId = body.user_id || 'test-user-id';
     const region = body.region || 'US'; // Support region parameter
 
-    // Map region to country code
+    // Validate region FIRST - Only allow US, CA, and EU
+    const validRegions = ['US', 'CA', 'EU'];
+    const normalizedRegion = region.toUpperCase();
+    if (!validRegions.includes(normalizedRegion)) {
+      return {
+        statusCode: 400,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          error: `Invalid region: ${region}. Valid regions: US, CA, EU`
+        }),
+      };
+    }
+
+    // Map region to country code - Only US, CA, and EU allowed
+    // EU maps to GB (United Kingdom) as the default EU country for Plaid
     const regionToCountryCode: Record<string, CountryCode> = {
       'US': CountryCode.Us,
-      'UK': CountryCode.Gb,
       'CA': CountryCode.Ca,
-      'IE': CountryCode.Ie,
-      'ES': CountryCode.Es,
-      'FR': CountryCode.Fr,
-      'NL': CountryCode.Nl,
-      'DE': CountryCode.De,
-      'IT': CountryCode.It,
-      'PL': CountryCode.Pl,
-      'DK': CountryCode.Dk,
-      'NO': CountryCode.No,
-      'SE': CountryCode.Se,
-      'EE': CountryCode.Ee,
-      'LT': CountryCode.Lt,
-      'LV': CountryCode.Lv,
-      'PT': CountryCode.Pt,
-      // Note: BE and AT may not be available in all Plaid SDK versions
-      // Using closest alternatives or defaulting to US if not available
+      'EU': CountryCode.Gb, // EU maps to UK/GB for Plaid
     };
 
-    const countryCode = regionToCountryCode[region.toUpperCase()] || CountryCode.Us;
+    const countryCode = regionToCountryCode[normalizedRegion];
 
     const request = {
       user: {
