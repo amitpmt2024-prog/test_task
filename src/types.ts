@@ -50,13 +50,3 @@ export interface QueueMessage {
   };
 }
 
-export interface Account {
-  account_id: string;
-  item_id: string;
-  name: string;
-  type: string;
-  subtype?: string;
-  mask?: string;
-  balance?: number;
-  currency?: string;
-}

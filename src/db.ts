@@ -10,7 +10,7 @@
  */
 
 import { Pool } from 'pg';
-import { Item, Transaction, SyncCursor } from './types';
+import { Item, Transaction } from './types';
 
 import * as dotenv from 'dotenv';
 dotenv.config();
@@ -146,42 +146,6 @@ class DB {
   }
 
   /**
-   * Upserts transactions into the database (inserts new or updates existing).
-   * 
-   * Uses a transaction (BEGIN/COMMIT) to ensure atomicity. If a transaction
-   * with the same transaction_id already exists, it updates the fields.
-   * 
-   * @param txs - Array of transaction objects to upsert
-   */
-  async upsertTransactions(txs: Transaction[]): Promise<void> {
-    if (txs.length === 0) return;
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const query = `
-        INSERT INTO transactions (transaction_id, item_id, account_id, amount, currency, date, name, merchant_name)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (transaction_id) DO UPDATE 
-        SET amount = EXCLUDED.amount, currency = EXCLUDED.currency, date = EXCLUDED.date, name = EXCLUDED.name, merchant_name = EXCLUDED.merchant_name;
-      `;
-
-      await Promise.all(txs.map(tx => 
-        client.query(query, [tx.transaction_id, tx.item_id, tx.account_id, tx.amount, tx.currency, tx.date, tx.name, tx.merchant_name || null])
-      ));
-      
-      await client.query('COMMIT');
-      console.log(`[DB] Upserted ${txs.length} transactions`);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      console.error('[DB] Error upserting transactions:', err);
-      throw err;
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
    * Upserts transactions with soft delete support.
    * 
    * This method is used during transaction sync. If a transaction was
@@ -255,24 +219,6 @@ class DB {
       'UPDATE transactions SET deleted_at = NOW(), updated_at = NOW() WHERE transaction_id = ANY($1::text[]) AND deleted_at IS NULL',
       [transactionIds]
     );
-  }
-
-  /**
-   * Retrieves transactions for a specific item.
-   * 
-   * By default, excludes soft-deleted transactions. Set includeDeleted=true
-   * to include all transactions including deleted ones.
-   * 
-   * @param itemId - The Plaid item ID
-   * @param includeDeleted - Whether to include soft-deleted transactions (default: false)
-   * @returns Array of transaction objects, ordered by date descending
-   */
-  async getTransactions(itemId: string, includeDeleted: boolean = false): Promise<Transaction[]> {
-    const query = includeDeleted 
-      ? 'SELECT * FROM transactions WHERE item_id = $1 ORDER BY date DESC'
-      : 'SELECT * FROM transactions WHERE item_id = $1 AND deleted_at IS NULL ORDER BY date DESC';
-    const res = await pool.query(query, [itemId]);
-    return res.rows as Transaction[];
   }
 
   /**

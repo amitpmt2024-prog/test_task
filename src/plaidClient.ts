@@ -152,5 +152,3 @@ export const getPlaidClient = (region: Region): PlaidApi | ReturnType<typeof cre
   }
   return clientCache.get(region)!;
 };
-
-export const plaidClient = getPlaidClient('US');
