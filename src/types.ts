@@ -17,6 +17,10 @@ export interface Transaction {
   date: string;
   name: string;
   merchant_name?: string;
+  pending?: boolean;
+  category?: string[];
+  payment_channel?: string;
+  deleted_at?: Date | null;
   details?: any;
 }
 
@@ -39,8 +43,20 @@ export interface PlaidWebhookBody {
 
 // Mock SQS/EventBridge Event
 export interface QueueMessage {
-  type: 'SYNC_TRANSACTIONS';
+  type: 'SYNC_TRANSACTIONS' | 'ADD_NEW_ACCOUNTS';
   payload: {
     item_id: string;
+    account_ids?: string[]; // For NEW_ACCOUNTS_AVAILABLE
   };
+}
+
+export interface Account {
+  account_id: string;
+  item_id: string;
+  name: string;
+  type: string;
+  subtype?: string;
+  mask?: string;
+  balance?: number;
+  currency?: string;
 }

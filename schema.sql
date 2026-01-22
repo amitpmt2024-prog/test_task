@@ -23,8 +23,17 @@ CREATE TABLE transactions (
     pending BOOLEAN DEFAULT FALSE,
     category JSONB, -- Storing array of categories
     payment_channel VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    deleted_at TIMESTAMP NULL, -- Soft delete support - allows deletion without breaking sync
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Index for efficient queries
+CREATE INDEX idx_transactions_item_id ON transactions(item_id);
+CREATE INDEX idx_transactions_account_id ON transactions(account_id);
+CREATE INDEX idx_transactions_date ON transactions(date);
+CREATE INDEX idx_transactions_deleted_at ON transactions(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX idx_transactions_item_date ON transactions(item_id, date);
 
 -- Stores sync cursors for efficient updates
 CREATE TABLE sync_cursors (

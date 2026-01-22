@@ -5,9 +5,29 @@ import { PlaidWebhookBody } from './types';
 
 // Lambda Handler for Plaid webhooks
 export const handleWebhook: APIGatewayProxyHandler = async (event) => {
+  // CRITICAL: Acknowledge webhook immediately (within 2 seconds)
+  // This prevents Plaid from retrying the webhook
+  const acknowledgeResponse = { 
+    statusCode: 200, 
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ received: true }) 
+  };
+
+  // Process webhook asynchronously (don't await)
+  processWebhookAsync(event).catch(error => {
+    console.error('[Webhook] Async processing error:', error);
+    // Log to monitoring service (CloudWatch, DataDog, etc.)
+  });
+
+  return acknowledgeResponse;
+};
+
+// Async webhook processing (runs in background)
+async function processWebhookAsync(event: any): Promise<void> {
   try {
     if (!event.body) {
-         return { statusCode: 400, body: JSON.stringify({ error: 'Missing body' }) };
+      console.error('[Webhook] Missing body');
+      return;
     }
 
     const payload = JSON.parse(event.body) as PlaidWebhookBody;
@@ -15,42 +35,138 @@ export const handleWebhook: APIGatewayProxyHandler = async (event) => {
     const webhookCode = payload.webhook_code;
     const itemId = payload.item_id;
 
-    console.log(`[Webhook] Received ${webhookType} / ${webhookCode} for item ${itemId}`);
+    console.log(`[Webhook] Processing ${webhookType}.${webhookCode} for item ${itemId}`);
 
-    // 1. Verify webhook signature (Pseudo-code)
-    // const jwt = event.headers['Plaid-Verification'];
-    // await plaidClient.webhookVerificationKey.get(...);
-    // verify(jwt, ...);
+    // 1. Verify webhook signature (Production implementation)
+    // const verificationHeader = event.headers['plaid-verification'];
+    // if (!verificationHeader) {
+    //   throw new Error('Missing Plaid verification header');
+    // }
+    // const verificationKey = await plaidClient.webhookVerificationKeyGet({
+    //   key_id: payload.webhook_verification_key_id
+    // });
+    // verifyWebhookSignature(verificationHeader, payload, verificationKey);
 
+    // 2. Verify item exists
+    const item = await db.getItem(itemId);
+    if (!item) {
+      console.error(`[Webhook] Item ${itemId} not found in database`);
+      return;
+    }
+
+    // 3. Handle different webhook types
     switch (webhookType) {
       case 'TRANSACTIONS':
-        if (webhookCode === 'SYNC_UPDATES_AVAILABLE' || webhookCode === 'DEFAULT_UPDATE' || webhookCode === 'TRANSACTIONS_REMOVED') {
-           // Delegate to background worker
-           console.log(`[Webhook] Triggering sync for ${itemId}`);
-           await backgroundQueue.sendMessage({
-             type: 'SYNC_TRANSACTIONS',
-             payload: { item_id: itemId }
-           });
-        }
+        await handleTransactionsWebhook(webhookCode, itemId, payload);
         break;
 
       case 'ITEM':
-        if (webhookCode === 'LOGIN_REQUIRED') {
-            console.log(`[Webhook] Marking item ${itemId} as login_required`);
-            await db.updateItemStatus(itemId, 'login_required');
-            // Notify user logic here...
-        } else if (webhookCode === 'NEW_ACCOUNTS_AVAILABLE') {
-            console.log(`[Webhook] New accounts available for ${itemId}. Notifying user.`);
-            // Logic: Send push notification to user to launch Link in "update" mode
-        }
+        await handleItemWebhook(webhookCode, itemId, payload, item);
         break;
+
+      default:
+        console.log(`[Webhook] Unhandled webhook type: ${webhookType}`);
     }
 
-    // Acknowledge quickly
-    return { statusCode: 200, body: JSON.stringify({ received: true }) };
-
   } catch (error) {
-    console.error('Webhook Error:', error);
-    return { statusCode: 500, body: JSON.stringify({ error: 'Webhook processing failed' }) };
+    console.error('[Webhook] Processing error:', error);
+    throw error; // Re-throw for monitoring
   }
-};
+}
+
+// Handle TRANSACTIONS webhooks
+async function handleTransactionsWebhook(
+  webhookCode: string,
+  itemId: string,
+  payload: PlaidWebhookBody
+): Promise<void> {
+  switch (webhookCode) {
+    case 'SYNC_UPDATES_AVAILABLE':
+    case 'DEFAULT_UPDATE':
+    case 'INITIAL_UPDATE':
+      // Trigger transaction sync in background
+      console.log(`[Webhook] TRANSACTIONS.UPDATED - Triggering sync for ${itemId}`);
+      await backgroundQueue.sendMessage({
+        type: 'SYNC_TRANSACTIONS',
+        payload: { item_id: itemId }
+      });
+      break;
+
+    case 'TRANSACTIONS_REMOVED':
+      // Handle removed transactions
+      console.log(`[Webhook] TRANSACTIONS_REMOVED for ${itemId}`);
+      const removedTransactionIds = payload.removed_transactions || [];
+      if (removedTransactionIds.length > 0) {
+        // Soft delete removed transactions
+        await db.softDeleteTransactions(removedTransactionIds);
+      }
+      break;
+
+    default:
+      console.log(`[Webhook] Unhandled TRANSACTIONS webhook code: ${webhookCode}`);
+  }
+}
+
+// Handle ITEM webhooks
+async function handleItemWebhook(
+  webhookCode: string,
+  itemId: string,
+  payload: PlaidWebhookBody,
+  item: any
+): Promise<void> {
+  switch (webhookCode) {
+    case 'LOGIN_REQUIRED':
+      // Mark connection as requiring re-authentication
+      console.log(`[Webhook] ITEM.LOGIN_REQUIRED - Marking item ${itemId} as login_required`);
+      await db.updateItemStatus(itemId, 'login_required');
+      
+      // Update connection state - token needs refresh
+      // In production, you would:
+      // 1. Send notification to user (push, email, in-app)
+      // 2. Update UI to show "Reconnect" button
+      // 3. Log event for analytics
+      console.log(`[Webhook] User ${item.user_id} needs to re-authenticate item ${itemId}`);
+      break;
+
+    case 'NEW_ACCOUNTS_AVAILABLE':
+      // New accounts are available - user can add them
+      console.log(`[Webhook] ITEM.NEW_ACCOUNTS_AVAILABLE - New accounts available for ${itemId}`);
+      
+      // Get new account IDs from payload
+      const newAccountIds = payload.new_accounts || [];
+      
+      if (newAccountIds.length > 0) {
+        // Delegate to background worker to fetch and store new accounts
+        await backgroundQueue.sendMessage({
+          type: 'ADD_NEW_ACCOUNTS',
+          payload: {
+            item_id: itemId,
+            account_ids: newAccountIds
+          }
+        });
+      }
+      
+      // Notify user about new accounts
+      // In production, you would:
+      // 1. Send push notification: "New accounts available! Add them now?"
+      // 2. Show in-app notification
+      // 3. Provide UI to add accounts via Plaid Link in "update" mode
+      console.log(`[Webhook] User ${item.user_id} has ${newAccountIds.length} new accounts available`);
+      break;
+
+    case 'ERROR':
+      // Item error occurred
+      console.error(`[Webhook] ITEM.ERROR for ${itemId}:`, payload.error);
+      await db.updateItemStatus(itemId, 'login_required'); // Mark as needing attention
+      break;
+
+    case 'PENDING_EXPIRATION':
+      // Access token will expire soon
+      console.log(`[Webhook] ITEM.PENDING_EXPIRATION - Access token expiring soon for ${itemId}`);
+      // In production, you would proactively refresh the token or notify user
+      break;
+
+    default:
+      console.log(`[Webhook] Unhandled ITEM webhook code: ${webhookCode}`);
+  }
+}

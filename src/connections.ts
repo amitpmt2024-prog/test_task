@@ -4,8 +4,10 @@ import { db } from './db';
 
 interface ConnectionRequest {
   public_token: string;
-  region: string; // UK, US, etc. - as requested
-  user_id: string; 
+  region?: string; // UK, US, CA, etc. - optional, defaults to 'US'
+  user_id: string;
+  institution_id?: string;
+  institution_name?: string;
 }
 
 // Lambda Handler
@@ -15,13 +17,26 @@ export const createConnection: APIGatewayProxyHandler = async (event) => {
         return { statusCode: 400, body: JSON.stringify({ error: 'Missing request body' }) };
     }
 
-    const { public_token, region, user_id }: ConnectionRequest = JSON.parse(event.body);
+    const { public_token, region = 'US', user_id, institution_id, institution_name }: ConnectionRequest = JSON.parse(event.body);
 
     if (!public_token || !user_id) {
-       return { statusCode: 400, body: JSON.stringify({ error: 'Missing public_token or user_id' }) };
+       return { 
+         statusCode: 400, 
+         body: JSON.stringify({ error: 'Missing required fields: public_token and user_id are required' }) 
+       };
     }
 
-    console.log(`[API] Creating connection for user ${user_id} in region ${region}`);
+    // Validate region if provided
+    const validRegions = ['US', 'UK', 'CA', 'IE', 'ES', 'FR', 'NL', 'DE', 'IT', 'PL', 'DK', 'NO', 'SE', 'EE', 'LT', 'LV', 'PT', 'BE', 'AT'];
+    const normalizedRegion = region.toUpperCase();
+    if (region && !validRegions.includes(normalizedRegion)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: `Invalid region: ${region}. Valid regions: ${validRegions.join(', ')}` })
+      };
+    }
+
+    console.log(`[API] Creating connection for user ${user_id} in region ${normalizedRegion}`);
 
     // 1. Exchange public token for access token
     const exchangeResponse = await plaidClient.itemPublicTokenExchange({
@@ -31,19 +46,37 @@ export const createConnection: APIGatewayProxyHandler = async (event) => {
     const accessToken = exchangeResponse.data.access_token;
     const itemId = exchangeResponse.data.item_id;
 
-    // 2. Save Item to DB
+    // 2. Get item info to retrieve institution details if not provided
+    let finalInstitutionId = institution_id;
+    let finalInstitutionName = institution_name;
+    
+    // In real implementation, you would call plaidClient.itemGet() here
+    // to get institution_id if not provided
+
+    // 3. Save Item to DB with region
     await db.saveItem({
       item_id: itemId,
       user_id: user_id,
       access_token: accessToken,
-      region: region, // Save region
+      institution_id: finalInstitutionId || null,
+      region: normalizedRegion,
       status: 'active',
       created_at: new Date()
     });
 
+    console.log(`[API] Connection created successfully: item_id=${itemId}, region=${normalizedRegion}`);
+
     return {
       statusCode: 200,
-      body: JSON.stringify({ item_id: itemId, status: 'connected' })
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ 
+        item_id: itemId, 
+        status: 'connected',
+        region: normalizedRegion,
+        message: 'Connection created successfully'
+      })
     };
 
   } catch (error) {
