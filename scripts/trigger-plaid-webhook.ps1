@@ -21,7 +21,7 @@ $PLAID_CLIENT_ID = $env:PLAID_CLIENT_ID
 $PLAID_SECRET = $env:PLAID_SECRET
 
 if (-not $PLAID_CLIENT_ID -or -not $PLAID_SECRET) {
-    Write-Host "❌ Error: PLAID_CLIENT_ID and PLAID_SECRET must be set in environment variables" -ForegroundColor Red
+    Write-Host "Error: PLAID_CLIENT_ID and PLAID_SECRET must be set in environment variables" -ForegroundColor Red
     Write-Host "   Create a .env file or set them in PowerShell:" -ForegroundColor Yellow
     Write-Host "   `$env:PLAID_CLIENT_ID = 'your-client-id'" -ForegroundColor Yellow
     Write-Host "   `$env:PLAID_SECRET = 'your-sandbox-secret'" -ForegroundColor Yellow
@@ -30,13 +30,13 @@ if (-not $PLAID_CLIENT_ID -or -not $PLAID_SECRET) {
 
 # If access_token not provided, try to get from database
 if (-not $AccessToken) {
-    Write-Host "⚠️  Access token not provided. You need to provide it manually." -ForegroundColor Yellow
+    Write-Host "Access token not provided. You need to provide it manually." -ForegroundColor Yellow
     Write-Host "   Get it from database: SELECT access_token FROM items WHERE item_id = '$ItemId';" -ForegroundColor Yellow
     $AccessToken = Read-Host "Enter access_token for item $ItemId"
 }
 
 if (-not $AccessToken) {
-    Write-Host "❌ Error: Access token is required" -ForegroundColor Red
+    Write-Host "Error: Access token is required" -ForegroundColor Red
     exit 1
 }
 
@@ -47,7 +47,7 @@ Write-Host ""
 
 switch ($WebhookType) {
     "TRANSACTIONS" {
-        Write-Host "📊 Triggering TRANSACTIONS.SYNC_UPDATES_AVAILABLE webhook..." -ForegroundColor Green
+        Write-Host "Triggering TRANSACTIONS.SYNC_UPDATES_AVAILABLE webhook..." -ForegroundColor Green
         Write-Host "   Calling transactions/sync API..." -ForegroundColor Gray
         
         $body = @{
@@ -65,7 +65,7 @@ switch ($WebhookType) {
                 } `
                 -Body $body
             
-            Write-Host "✅ Success! transactions/sync API called" -ForegroundColor Green
+            Write-Host "Success! transactions/sync API called" -ForegroundColor Green
             Write-Host "   Plaid will automatically send TRANSACTIONS.SYNC_UPDATES_AVAILABLE webhook" -ForegroundColor Gray
             Write-Host "   Check your server logs and tunnel for incoming webhook" -ForegroundColor Gray
             Write-Host ""
@@ -73,7 +73,7 @@ switch ($WebhookType) {
             $response | ConvertTo-Json -Depth 5
         }
         catch {
-            Write-Host "❌ Error calling Plaid API:" -ForegroundColor Red
+            Write-Host "Error calling Plaid API:" -ForegroundColor Red
             Write-Host $_.Exception.Message -ForegroundColor Red
             if ($_.ErrorDetails.Message) {
                 Write-Host $_.ErrorDetails.Message -ForegroundColor Red
@@ -83,7 +83,7 @@ switch ($WebhookType) {
     }
     
     "ITEM" {
-        Write-Host "⚠️  For ITEM webhooks, use Plaid Dashboard:" -ForegroundColor Yellow
+        Write-Host "For ITEM webhooks, use Plaid Dashboard:" -ForegroundColor Yellow
         Write-Host "   1. Go to https://dashboard.plaid.com/" -ForegroundColor Gray
         Write-Host "   2. Navigate to Items or Sandbox section" -ForegroundColor Gray
         Write-Host "   3. Find item: $ItemId" -ForegroundColor Gray
@@ -93,7 +93,7 @@ switch ($WebhookType) {
     }
 }
 
-Write-Host "`n📝 Next Steps:" -ForegroundColor Cyan
+Write-Host "`Next Steps:" -ForegroundColor Cyan
 Write-Host "   1. Check your server logs for webhook processing" -ForegroundColor Gray
 Write-Host "   2. Check tunnel terminal for incoming requests" -ForegroundColor Gray
 Write-Host "   3. Verify database updates (transactions, item status, etc.)" -ForegroundColor Gray
