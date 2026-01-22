@@ -86,8 +86,8 @@ async function handleTransactionSync(payload: TransactionsSyncPayload): Promise<
 async function handleAddNewAccounts(payload: { item_id: string; account_ids?: string[] }): Promise<void> {
   const { item_id, account_ids } = payload;
   
-  console.log(`[Worker] Adding new accounts for item ${item_id}`);
-  
+  console.log(`[Worker] Processing new accounts for item ${item_id}`);
+
   // 1. Get item to retrieve access token
   const item = await db.getItem(item_id);
   if (!item) {
@@ -95,36 +95,56 @@ async function handleAddNewAccounts(payload: { item_id: string; account_ids?: st
     return;
   }
 
-  // 2. Fetch accounts from Plaid
-  // In real implementation, you would call:
-  // const accountsResponse = await plaidClient.accountsGet({
-  //   access_token: item.access_token
-  // });
-  
-  // For now, mock the response
-  const mockAccounts = account_ids?.map(accId => ({
-    account_id: accId,
-    name: `Account ${accId}`,
-    type: 'depository',
-    subtype: 'checking',
-    mask: '0000',
-    balances: {
-      current: 1000.00,
-      iso_currency_code: 'USD'
+  try {
+    // 2. Fetch ALL accounts from Plaid (to identify new ones)
+    console.log(`[Worker] Fetching accounts from Plaid for item ${item_id}`);
+    const accountsResponse = await plaidClient.accountsGet({
+      access_token: item.access_token
+    });
+
+    const allAccounts = accountsResponse.data.accounts;
+    console.log(`[Worker] Found ${allAccounts.length} total accounts from Plaid`);
+
+    // 3. Filter to only new accounts (if account_ids provided in webhook)
+    let newAccounts = allAccounts;
+    if (account_ids && account_ids.length > 0) {
+      newAccounts = allAccounts.filter(acc => account_ids.includes(acc.account_id));
+      console.log(`[Worker] Filtered to ${newAccounts.length} new accounts from webhook`);
     }
-  })) || [];
 
-  // 3. Store new accounts in database
-  // In production, you would have an accounts table
-  // For this implementation, we'll just log them
-  console.log(`[Worker] Found ${mockAccounts.length} new accounts for item ${item_id}`);
-  
-  for (const account of mockAccounts) {
-    console.log(`[Worker] New account available: ${account.account_id} - ${account.name}`);
-    // In production: await db.saveAccount({ item_id, ...account });
+    // 4. Process and log new accounts
+    for (const account of newAccounts) {
+      const accountInfo = {
+        account_id: account.account_id,
+        name: account.name,
+        type: account.type,
+        subtype: account.subtype || null,
+        mask: account.mask || null,
+        balance: account.balances?.current || 0,
+        currency: account.balances?.iso_currency_code || account.balances?.unofficial_currency_code || 'USD'
+      };
+      
+      console.log(`[Worker] ✅ New account available: ${accountInfo.account_id} - ${accountInfo.name} (${accountInfo.type}/${accountInfo.subtype})`);
+      console.log(`[Worker]    Balance: ${accountInfo.currency} ${accountInfo.balance}`);
+      
+      // In production, you would save to accounts table:
+      // await db.saveAccount({ item_id, ...accountInfo });
+    }
+
+    // 5. Notify user about new accounts
+    console.log(`[Worker] 📧 User ${item.user_id} has ${newAccounts.length} new account(s) available`);
+    console.log(`[Worker] 💡 In production: Send push notification/email to user`);
+    console.log(`[Worker] 💡 User can add accounts via Plaid Link in "update" mode with access_token`);
+    
+    // Example: To add new accounts, user would:
+    // 1. Call /create_link_token with access_token (update mode)
+    // 2. Open Plaid Link in update mode
+    // 3. Select new accounts to add
+    // 4. Complete the flow
+
+  } catch (error: any) {
+    console.error(`[Worker] Error fetching accounts from Plaid:`, error);
+    console.error(`[Worker] Error details:`, error?.response?.data || error?.message);
+    throw error;
   }
-
-  // 4. Notify user (in production, send push notification, email, etc.)
-  console.log(`[Worker] User ${item.user_id} has ${mockAccounts.length} new accounts available`);
-  console.log(`[Worker] In production: Send notification to user to add accounts via Plaid Link`);
 }
